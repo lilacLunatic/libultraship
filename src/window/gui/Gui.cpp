@@ -257,12 +257,7 @@ bool Gui::SupportsViewports() {
     }
 }
 
-void Gui::Update(WindowEvent event) {
-    if (mNeedsConsoleVariableSave) {
-        CVarSave();
-        mNeedsConsoleVariableSave = false;
-    }
-
+void Gui::HandleWindowEvents(WindowEvent event) {
     switch (Context::GetInstance()->GetWindow()->GetWindowBackend()) {
         case WindowBackend::FAST3D_SDL_OPENGL:
         case WindowBackend::FAST3D_SDL_METAL:
@@ -282,121 +277,31 @@ void Gui::Update(WindowEvent event) {
     }
 }
 
-bool Gui::ImGuiGamepadNavigationEnabled() {
+bool Gui::GamepadNavigationEnabled() {
     return mImGuiIo->ConfigFlags & ImGuiConfigFlags_NavEnableGamepad;
 }
 
-void Gui::BlockImGuiGamepadNavigation() {
+void Gui::BlockGamepadNavigation() {
     mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
 }
 
-void Gui::UnblockImGuiGamepadNavigation() {
+void Gui::UnblockGamepadNavigation() {
     if (CVarGetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) && GetMenuOrMenubarVisible()) {
         mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     }
 }
 
-void Gui::DrawMenu() {
-    // TODO: These 3 functions are placed here temporarily until future GUI/Frame refactoring
-    // is finished and gives these a new home
-    ImGuiBackendNewFrame();
-    ImGuiWMNewFrame();
-    ImGui::NewFrame();
-
-    Context::GetInstance()->GetWindow()->GetGui()->GetGuiWindow("Console")->Update();
-
-    const std::shared_ptr<Window> wnd = Context::GetInstance()->GetWindow();
-    const std::shared_ptr<Config> conf = Context::GetInstance()->GetConfig();
-
-    ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoBackground |
-                                   ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove |
-                                   ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
-                                   ImGuiWindowFlags_NoResize;
-
-    if (GetMenuBar() && GetMenuBar()->IsVisible()) {
-        windowFlags |= ImGuiWindowFlags_MenuBar;
+ImGuiID Gui::GetMainGameWindowID() {
+    static ImGuiID windowID = 0;
+    if (windowID != 0) {
+        return windowID;
     }
-
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(viewport->WorkPos);
-    ImGui::SetNextWindowSize(ImVec2((int)wnd->GetWidth(), (int)wnd->GetHeight()));
-    ImGui::SetNextWindowViewport(viewport->ID);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0.0f);
-    ImGui::Begin("Main - Deck", nullptr, windowFlags);
-    ImGui::PopStyleVar(3);
-
-    mTemporaryWindowPos = ImGui::GetWindowPos();
-
-    const ImGuiID dockId = ImGui::GetID("main_dock");
-
-    if (!ImGui::DockBuilderGetNode(dockId)) {
-        ImGui::DockBuilderRemoveNode(dockId);
-        ImGui::DockBuilderAddNode(dockId, ImGuiDockNodeFlags_NoTabBar);
-
-        ImGui::DockBuilderDockWindow("Main Game", dockId);
-
-        ImGui::DockBuilderFinish(dockId);
+    ImGuiWindow* window = ImGui::FindWindowByName("Main Game");
+    if (window == NULL) {
+        return 0;
     }
-
-    ImGui::DockSpace(dockId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None | ImGuiDockNodeFlags_NoDockingInCentralNode);
-
-    if (ImGui::IsKeyPressed(TOGGLE_BTN) || ImGui::IsKeyPressed(ImGuiKey_Escape) ||
-        (ImGui::IsKeyPressed(TOGGLE_PAD_BTN) && CVarGetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0))) {
-        if (ImGui::IsKeyPressed(TOGGLE_BTN) || (ImGui::IsKeyPressed(TOGGLE_PAD_BTN) && !GetPadBtnTogglesMenu())) {
-            if (GetMenuBar()) {
-                GetMenuBar()->ToggleVisibility();
-            }
-        } else if (ImGui::IsKeyPressed(ImGuiKey_Escape) ||
-                   (ImGui::IsKeyPressed(TOGGLE_PAD_BTN) && GetPadBtnTogglesMenu())) {
-            if (GetMenu()) {
-                GetMenu()->ToggleVisibility();
-            }
-        }
-        if (wnd->IsFullscreen()) {
-            Context::GetInstance()->GetWindow()->SetCursorVisibility(GetMenuOrMenubarVisible() ||
-                                                                     wnd->ShouldForceCursorVisibility());
-        }
-        if (CVarGetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) && GetMenuOrMenubarVisible()) {
-            mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
-        } else {
-            mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
-        }
-    }
-
-#if __APPLE__
-    if ((ImGui::IsKeyDown(ImGuiKey_LeftSuper) || ImGui::IsKeyDown(ImGuiKey_RightSuper)) &&
-        ImGui::IsKeyPressed(ImGuiKey_R, false)) {
-        std::reinterpret_pointer_cast<ConsoleWindow>(
-            Context::GetInstance()->GetWindow()->GetGui()->GetGuiWindow("Console"))
-            ->Dispatch("reset");
-    }
-#else
-    if ((ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) &&
-        ImGui::IsKeyPressed(ImGuiKey_R, false)) {
-        std::reinterpret_pointer_cast<ConsoleWindow>(
-            Context::GetInstance()->GetWindow()->GetGui()->GetGuiWindow("Console"))
-            ->Dispatch("reset");
-    }
-#endif
-
-    if (GetMenuBar()) {
-        GetMenuBar()->Update();
-        GetMenuBar()->Draw();
-    }
-
-    if (GetMenu()) {
-        GetMenu()->Update();
-        GetMenu()->Draw();
-    }
-
-    ImGui::End();
-
-    for (auto& windowIter : mGuiWindows) {
-        windowIter.second->Update();
-        windowIter.second->Draw();
-    }
+    windowID = window->ID;
+    return windowID;
 }
 
 void Gui::ImGuiBackendNewFrame() {
@@ -543,7 +448,127 @@ int16_t Gui::GetIntegerScaleFactor() {
     }
 }
 
+void Gui::DrawMenu() {
+    const std::shared_ptr<Window> wnd = Context::GetInstance()->GetWindow();
+    const std::shared_ptr<Config> conf = Context::GetInstance()->GetConfig();
+
+    ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoBackground |
+                                   ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove |
+                                   ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
+                                   ImGuiWindowFlags_NoResize;
+
+    if (GetMenuBar() && GetMenuBar()->IsVisible()) {
+        windowFlags |= ImGuiWindowFlags_MenuBar;
+    }
+
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->WorkPos);
+    ImGui::SetNextWindowSize(ImVec2((int)wnd->GetWidth(), (int)wnd->GetHeight()));
+    ImGui::SetNextWindowViewport(viewport->ID);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0.0f);
+    ImGui::Begin("Main - Deck", nullptr, windowFlags);
+    ImGui::PopStyleVar(3);
+
+    mTemporaryWindowPos = ImGui::GetWindowPos();
+
+    const ImGuiID dockId = ImGui::GetID("main_dock");
+
+    if (!ImGui::DockBuilderGetNode(dockId)) {
+        ImGui::DockBuilderRemoveNode(dockId);
+        ImGui::DockBuilderAddNode(dockId, ImGuiDockNodeFlags_NoTabBar);
+
+        ImGui::DockBuilderDockWindow("Main Game", dockId);
+
+        ImGui::DockBuilderFinish(dockId);
+    }
+
+    ImGui::DockSpace(dockId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None | ImGuiDockNodeFlags_NoDockingInCentralNode);
+
+    if (ImGui::IsKeyPressed(TOGGLE_BTN) || ImGui::IsKeyPressed(ImGuiKey_Escape) ||
+        (ImGui::IsKeyPressed(TOGGLE_PAD_BTN) && CVarGetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0))) {
+        if ((ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsKeyPressed(TOGGLE_PAD_BTN)) && GetMenu()) {
+            GetMenu()->ToggleVisibility();
+        } else if ((ImGui::IsKeyPressed(TOGGLE_BTN) || ImGui::IsKeyPressed(TOGGLE_PAD_BTN)) && GetMenuBar()) {
+            GetMenuBar()->ToggleVisibility();
+        }
+        if (wnd->IsFullscreen()) {
+            Context::GetInstance()->GetWindow()->SetMouseCapture(
+                !(GetMenuOrMenubarVisible() || wnd->ShouldForceCursorVisibility()));
+        }
+        if (CVarGetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) && GetMenuOrMenubarVisible()) {
+            mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+        } else {
+            mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
+        }
+    }
+
+#if __APPLE__
+    if ((ImGui::IsKeyDown(ImGuiKey_LeftSuper) || ImGui::IsKeyDown(ImGuiKey_RightSuper)) &&
+        ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+        std::reinterpret_pointer_cast<ConsoleWindow>(
+            Context::GetInstance()->GetWindow()->GetGui()->GetGuiWindow("Console"))
+            ->Dispatch("reset");
+    }
+#else
+    if ((ImGui::IsKeyDown(ImGuiKey_LeftCtrl) || ImGui::IsKeyDown(ImGuiKey_RightCtrl)) &&
+        ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+        std::reinterpret_pointer_cast<ConsoleWindow>(
+            Context::GetInstance()->GetWindow()->GetGui()->GetGuiWindow("Console"))
+            ->Dispatch("reset");
+    }
+#endif
+
+    if (GetMenuBar()) {
+        GetMenuBar()->Update();
+        GetMenuBar()->Draw();
+    }
+
+    if (GetMenu()) {
+        GetMenu()->Update();
+        GetMenu()->Draw();
+    }
+
+    for (auto& windowIter : mGuiWindows) {
+        windowIter.second->Update();
+        windowIter.second->Draw();
+    }
+
+    ImGui::End();
+}
+
 void Gui::StartFrame() {
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoMouseInputs;
+
+    if(Context::GetInstance()->GetWindow()->IsMouseCaptured()) {
+        for (auto windowIter : ImGui::GetCurrentContext()->WindowsById.Data) {
+            if (windowIter.key != GetMainGameWindowID() &&
+                std::string(((ImGuiWindow*)windowIter.val_p)->Name) != std::string("GameOverlay")) {
+                ((ImGuiWindow*)windowIter.val_p)->Flags |= flags;
+            }
+        }
+    } else {
+        for (auto windowIter : ImGui::GetCurrentContext()->WindowsById.Data) {
+            if (windowIter.key != GetMainGameWindowID() &&
+                std::string(((ImGuiWindow*)windowIter.val_p)->Name) != std::string("GameOverlay")) {
+                ((ImGuiWindow*)windowIter.val_p)->Flags &= ~(flags);
+            }
+        }
+    }
+    ImGuiBackendNewFrame();
+    ImGuiWMNewFrame();
+    ImGui::NewFrame();
+}
+
+void Gui::EndFrame() {
+    // Draw the ImGui "viewports" which are the floating windows.
+    ImGui::Render();
+    ImGuiRenderDrawData(ImGui::GetDrawData());
+    ImGui::EndFrame();
+}
+
+void Gui::DrawGame() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 0.0f);
@@ -637,31 +662,65 @@ void Gui::StartFrame() {
     ImGui::End();
 }
 
-void Gui::RenderViewports() {
-    ImGui::Render();
-    ImGuiRenderDrawData(ImGui::GetDrawData());
+void Gui::DrawFloatingWindows() {
     if (mImGuiIo->ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
         WindowBackend backend = Context::GetInstance()->GetWindow()->GetWindowBackend();
-        if ((backend == WindowBackend::FAST3D_SDL_OPENGL || backend == WindowBackend::FAST3D_SDL_METAL) &&
-            mImpl.Opengl.Context != nullptr) {
+        // OpenGL requires extra platform handling on the GL context
+        if (backend == WindowBackend::FAST3D_SDL_OPENGL && mImpl.Opengl.Context != nullptr) {
+            // Backup window and context before calling RenderPlatformWindowsDefault
             SDL_Window* backupCurrentWindow = SDL_GL_GetCurrentWindow();
             SDL_GLContext backupCurrentContext = SDL_GL_GetCurrentContext();
 
             ImGui::UpdatePlatformWindows();
             ImGui::RenderPlatformWindowsDefault();
 
+            // Set back the GL context for next frame
             SDL_GL_MakeCurrent(backupCurrentWindow, backupCurrentContext);
         } else {
+#ifdef __APPLE__
+            // Metal requires additional frame setup to get ImGui ready for drawing floating windows
+            if (backend == WindowBackend::FAST3D_SDL_METAL) {
+                Metal_SetupFloatingFrame();
+            }
+#endif
+
             ImGui::UpdatePlatformWindows();
             ImGui::RenderPlatformWindowsDefault();
         }
     }
 }
 
-void Gui::EndFrame() {
-    ImGui::EndFrame();
-    if (mImGuiIo->ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
-        ImGui::UpdatePlatformWindows();
+void Gui::CheckSaveCvars() {
+    if (mNeedsConsoleVariableSave) {
+        CVarSave();
+        mNeedsConsoleVariableSave = false;
+    }
+}
+
+void Gui::Draw() {
+    // Initialize the frame.
+    StartFrame();
+    // Draw the gui menus
+    DrawMenu();
+    // Draw the game framebuffer into ImGui
+    DrawGame();
+    // End the frame
+    EndFrame();
+    // Draw the ImGui floating windows.
+    DrawFloatingWindows();
+    // Check if the CVars need to be saved, and do it if so.
+    CheckSaveCvars();
+}
+
+void Gui::SetupRendererFrame() {
+    switch (Context::GetInstance()->GetWindow()->GetWindowBackend()) {
+#ifdef __APPLE__
+        case WindowBackend::FAST3D_SDL_METAL:
+            Metal_SetupFrame(mImpl.Metal.Renderer);
+            break;
+#endif
+        default:
+            break;
     }
 }
 
@@ -723,7 +782,7 @@ void Gui::ImGuiRenderDrawData(ImDrawData* data) {
     }
 }
 
-void Gui::SaveConsoleVariablesOnNextTick() {
+void Gui::SaveConsoleVariablesNextFrame() {
     mNeedsConsoleVariableSave = true;
 }
 
@@ -757,7 +816,7 @@ std::shared_ptr<GuiWindow> Gui::GetGuiWindow(const std::string& name) {
     }
 }
 
-void Gui::LoadGuiTexture(const std::string& name, const LUS::Texture& res, const ImVec4& tint) {
+void Gui::LoadGuiTexture(const std::string& name, const Fast::Texture& res, const ImVec4& tint) {
     GfxRenderingAPI* api = gfx_get_current_rendering_api();
     std::vector<uint8_t> texBuffer;
     texBuffer.reserve(res.Width * res.Height * 4);
@@ -765,7 +824,7 @@ void Gui::LoadGuiTexture(const std::string& name, const LUS::Texture& res, const
     // For HD textures we need to load the buffer raw (similar to inside gfx_pp)
     if ((res.Flags & TEX_FLAG_LOAD_AS_RAW) != 0) {
         // Raw loading doesn't support TLUT textures
-        if (res.Type == LUS::TextureType::Palette4bpp || res.Type == LUS::TextureType::Palette8bpp) {
+        if (res.Type == Fast::TextureType::Palette4bpp || res.Type == Fast::TextureType::Palette8bpp) {
             // TODO convert other image types
             SPDLOG_WARN("ImGui::ResourceLoad: Attempting to load unsupported image type");
             return;
@@ -774,10 +833,10 @@ void Gui::LoadGuiTexture(const std::string& name, const LUS::Texture& res, const
         texBuffer.assign(res.ImageData, res.ImageData + (res.Width * res.Height * 4));
     } else {
         switch (res.Type) {
-            case LUS::TextureType::RGBA32bpp:
+            case Fast::TextureType::RGBA32bpp:
                 texBuffer.assign(res.ImageData, res.ImageData + (res.Width * res.Height * 4));
                 break;
-            case LUS::TextureType::RGBA16bpp: {
+            case Fast::TextureType::RGBA16bpp: {
                 for (int32_t i = 0; i < res.Width * res.Height; i++) {
                     uint8_t b1 = res.ImageData[i * 2 + 0];
                     uint8_t b2 = res.ImageData[i * 2 + 1];
@@ -792,7 +851,7 @@ void Gui::LoadGuiTexture(const std::string& name, const LUS::Texture& res, const
                 }
                 break;
             }
-            case LUS::TextureType::GrayscaleAlpha16bpp: {
+            case Fast::TextureType::GrayscaleAlpha16bpp: {
                 for (int32_t i = 0; i < res.Width * res.Height; i++) {
                     uint8_t color = res.ImageData[i * 2 + 0];
                     uint8_t alpha = res.ImageData[i * 2 + 1];
@@ -804,7 +863,7 @@ void Gui::LoadGuiTexture(const std::string& name, const LUS::Texture& res, const
                 break;
                 break;
             }
-            case LUS::TextureType::GrayscaleAlpha8bpp: {
+            case Fast::TextureType::GrayscaleAlpha8bpp: {
                 for (int32_t i = 0; i < res.Width * res.Height; i++) {
                     uint8_t ia = res.ImageData[i];
                     uint8_t color = ((ia >> 4) & 0xF) * 255 / 15;
@@ -816,7 +875,7 @@ void Gui::LoadGuiTexture(const std::string& name, const LUS::Texture& res, const
                 }
                 break;
             }
-            case LUS::TextureType::GrayscaleAlpha4bpp: {
+            case Fast::TextureType::GrayscaleAlpha4bpp: {
                 for (int32_t i = 0; i < res.Width * res.Height; i += 2) {
                     uint8_t b = res.ImageData[i / 2];
 
@@ -838,17 +897,17 @@ void Gui::LoadGuiTexture(const std::string& name, const LUS::Texture& res, const
                 }
                 break;
             }
-            case LUS::TextureType::Grayscale8bpp: {
+            case Fast::TextureType::Grayscale8bpp: {
                 for (int32_t i = 0; i < res.Width * res.Height; i++) {
                     uint8_t ia = res.ImageData[i];
                     texBuffer.push_back(ia);
                     texBuffer.push_back(ia);
                     texBuffer.push_back(ia);
-                    texBuffer.push_back(0xFF);
+                    texBuffer.push_back(ia);
                 }
                 break;
             }
-            case LUS::TextureType::Grayscale4bpp: {
+            case Fast::TextureType::Grayscale4bpp: {
                 for (int32_t i = 0; i < res.Width * res.Height; i += 2) {
                     uint8_t b = res.ImageData[i / 2];
 
@@ -856,13 +915,13 @@ void Gui::LoadGuiTexture(const std::string& name, const LUS::Texture& res, const
                     texBuffer.push_back(ia4);
                     texBuffer.push_back(ia4);
                     texBuffer.push_back(ia4);
-                    texBuffer.push_back(0xFF);
+                    texBuffer.push_back(ia4);
 
                     ia4 = ((b & 0xF) * 0xFF) / 0b1111;
                     texBuffer.push_back(ia4);
                     texBuffer.push_back(ia4);
                     texBuffer.push_back(ia4);
-                    texBuffer.push_back(0xFF);
+                    texBuffer.push_back(ia4);
                 }
                 break;
             }
@@ -894,7 +953,7 @@ void Gui::LoadGuiTexture(const std::string& name, const LUS::Texture& res, const
 
 void Gui::LoadGuiTexture(const std::string& name, const std::string& path, const ImVec4& tint) {
     const auto res =
-        static_cast<LUS::Texture*>(Context::GetInstance()->GetResourceManager()->LoadResource(path, true).get());
+        static_cast<Fast::Texture*>(Context::GetInstance()->GetResourceManager()->LoadResource(path, true).get());
 
     LoadGuiTexture(name, *res, tint);
 }
@@ -920,9 +979,9 @@ void Gui::SetMenuBar(std::shared_ptr<GuiMenuBar> menuBar) {
     }
 
     if (Context::GetInstance()->GetWindow()->IsFullscreen()) {
-        Context::GetInstance()->GetWindow()->SetCursorVisibility(
-            (GetMenuBar() && GetMenuBar()->IsVisible()) ||
-            Context::GetInstance()->GetWindow()->ShouldForceCursorVisibility());
+        Context::GetInstance()->GetWindow()->SetMouseCapture(
+            !((GetMenuBar() && GetMenuBar()->IsVisible()) ||
+              Context::GetInstance()->GetWindow()->ShouldForceCursorVisibility()));
     }
 }
 
@@ -934,9 +993,9 @@ void Gui::SetMenu(std::shared_ptr<GuiWindow> menu) {
     }
 
     if (Context::GetInstance()->GetWindow()->IsFullscreen()) {
-        Context::GetInstance()->GetWindow()->SetCursorVisibility(
-            (GetMenu() && GetMenu()->IsVisible()) ||
-            Context::GetInstance()->GetWindow()->ShouldForceCursorVisibility());
+        Context::GetInstance()->GetWindow()->SetMouseCapture(
+            !((GetMenu() && GetMenu()->IsVisible()) ||
+              Context::GetInstance()->GetWindow()->ShouldForceCursorVisibility()));
     }
 }
 
@@ -948,15 +1007,23 @@ bool Gui::GetMenuOrMenubarVisible() {
     return (GetMenuBar() && GetMenuBar()->IsVisible()) || (GetMenu() && GetMenu()->IsVisible());
 }
 
+bool Gui::IsMouseOverAnyGuiItem() {
+    return ImGui::IsAnyItemHovered();
+}
+
+bool Gui::IsMouseOverActivePopup() {
+    ImGuiContext* ctx = ImGui::GetCurrentContext();
+    if (ctx->OpenPopupStack.Size == 0 || ctx->HoveredWindow == NULL) {
+        return false;
+    }
+    ImGuiPopupData data = ctx->OpenPopupStack.back();
+    if (data.Window == NULL) {
+        return false;
+    }
+    return (ctx->HoveredWindow->ID == data.Window->ID);
+}
+
 std::shared_ptr<GuiWindow> Gui::GetMenu() {
     return mMenu;
-}
-
-bool Gui::GetPadBtnTogglesMenu() {
-    return mPadBtnTogglesMenu;
-}
-
-void Gui::SetPadBtnTogglesMenu() {
-    mPadBtnTogglesMenu = true;
 }
 } // namespace Ship

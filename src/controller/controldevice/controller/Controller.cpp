@@ -126,99 +126,6 @@ void Controller::ReloadAllMappingsFromConfig() {
     GetLED()->ReloadAllMappingsFromConfig();
 }
 
-void Controller::ReadToPad(OSContPad* pad) {
-    int x, y;
-    Uint32 buttons;
-    OSContPad padToBuffer = { 0 };
-
-#ifndef __WIIU__
-    buttons = SDL_GetMouseState(&x, &y);
-    wTouchX = x;
-    wTouchY = y;
-#endif
-
-    // Click Inputs
-    if ((buttons & SDL_BUTTON_LMASK) != 0) {
-        wLeftClick = 1;
-    }
-    else {
-        wLeftClick = 0;
-    }
-    if ((buttons & SDL_BUTTON_RMASK) != 0) {
-        wRightClick = 1;
-    }
-    else {
-        wRightClick = 0;
-    }
-    if ((buttons & SDL_BUTTON_MMASK) != 0) {
-        wMiddleClick = 1;
-    }
-    else {
-        wMiddleClick = 0;
-    }
-
-    // Button Inputs
-    for (auto [bitmask, button] : mButtons) {
-        button->UpdatePad(padToBuffer.button);
-    }
-
-    // Stick Inputs
-    GetLeftStick()->UpdatePad(padToBuffer.stick_x, padToBuffer.stick_y);
-    GetRightStick()->UpdatePad(padToBuffer.right_stick_x, padToBuffer.right_stick_y);
-
-    // Click/Touch
-    padToBuffer.touch_x = wTouchX;
-    padToBuffer.touch_y = wTouchY;
-    padToBuffer.left_click = wLeftClick;
-    padToBuffer.right_click = wRightClick;
-    padToBuffer.middle_click = wMiddleClick;
-
-    // Mouse
-    padToBuffer.mouse_move_x = wMouseMoveX;
-    padToBuffer.mouse_move_y = wMouseMoveY;
-
-    // Gyro
-    GetGyro()->UpdatePad(padToBuffer.gyro_x, padToBuffer.gyro_y);
-
-    mPadBuffer.push_front(padToBuffer);
-    if (pad != nullptr) {
-        auto& padFromBuffer =
-            mPadBuffer[std::min(mPadBuffer.size() - 1, (size_t)CVarGetInteger(CVAR_SIMULATED_INPUT_LAG, 0))];
-
-        pad->button |= padFromBuffer.button;
-
-        if (pad->stick_x == 0) {
-            pad->stick_x = padFromBuffer.stick_x;
-        }
-        if (pad->stick_y == 0) {
-            pad->stick_y = padFromBuffer.stick_y;
-        }
-
-        if (pad->right_stick_x == 0) {
-            pad->right_stick_x = padFromBuffer.right_stick_x;
-        }
-        if (pad->right_stick_y == 0) {
-            pad->right_stick_y = padFromBuffer.right_stick_y;
-        }
-
-        if (pad->gyro_x == 0) {
-            pad->gyro_x = padFromBuffer.gyro_x;
-        }
-        if (pad->gyro_y == 0) {
-            pad->gyro_y = padFromBuffer.gyro_y;
-        }
-        pad->touch_x = padFromBuffer.touch_x;
-        pad->touch_y = padFromBuffer.touch_y;
-        pad->left_click = padFromBuffer.left_click;
-        pad->middle_click = padFromBuffer.middle_click;
-        pad->right_click = padFromBuffer.right_click;
-    }
-
-    while (mPadBuffer.size() > 6) {
-        mPadBuffer.pop_back();
-    }
-}
-
 bool Controller::ProcessKeyboardEvent(KbEventType eventType, KbScancode scancode) {
     bool result = false;
     for (auto [bitmask, button] : GetAllButtons()) {
@@ -226,6 +133,16 @@ bool Controller::ProcessKeyboardEvent(KbEventType eventType, KbScancode scancode
     }
     result = GetLeftStick()->ProcessKeyboardEvent(eventType, scancode) || result;
     result = GetRightStick()->ProcessKeyboardEvent(eventType, scancode) || result;
+    return result;
+}
+
+bool Controller::ProcessMouseEvent(bool isPressed, MouseBtn mouseButton) {
+    bool result = false;
+    for (auto [bitmask, button] : GetAllButtons()) {
+        result = button->ProcessMouseEvent(isPressed, mouseButton) || result;
+    }
+    result = GetLeftStick()->ProcessMouseEvent(isPressed, mouseButton) || result;
+    result = GetRightStick()->ProcessMouseEvent(isPressed, mouseButton) || result;
     return result;
 }
 
@@ -280,7 +197,7 @@ void Controller::MoveMappingsToDifferentController(std::shared_ptr<Controller> n
 
     for (auto stick : { GetLeftStick(), GetRightStick() }) {
         auto newControllerStick =
-            stick->LeftOrRightStick() == LEFT_STICK ? newController->GetLeftStick() : newController->GetRightStick();
+            stick->GetStickIndex() == LEFT_STICK ? newController->GetLeftStick() : newController->GetRightStick();
         for (auto [direction, mappings] : stick->GetAllAxisDirectionMappings()) {
             std::vector<std::string> axisDirectionMappingIdsToRemove;
             for (auto [id, mapping] : mappings) {
@@ -377,3 +294,65 @@ std::vector<std::shared_ptr<ControllerMapping>> Controller::GetAllMappings() {
     return allMappings;
 }
 } // namespace Ship
+
+namespace LUS {
+Controller::Controller(uint8_t portIndex, std::vector<CONTROLLERBUTTONS_T> additionalBitmasks)
+    : Ship::Controller(portIndex, additionalBitmasks) {
+}
+
+Controller::Controller(uint8_t portIndex) : Ship::Controller(portIndex, {}) {
+}
+
+void Controller::ReadToPad(void* pad) {
+    ReadToOSContPad((OSContPad*)pad);
+}
+
+void Controller::ReadToOSContPad(OSContPad* pad) {
+    OSContPad padToBuffer = { 0 };
+
+    // Button Inputs
+    for (auto [bitmask, button] : mButtons) {
+        button->UpdatePad(padToBuffer.button);
+    }
+
+    // Stick Inputs
+    GetLeftStick()->UpdatePad(padToBuffer.stick_x, padToBuffer.stick_y);
+    GetRightStick()->UpdatePad(padToBuffer.right_stick_x, padToBuffer.right_stick_y);
+
+    // Gyro
+    GetGyro()->UpdatePad(padToBuffer.gyro_x, padToBuffer.gyro_y);
+
+    mPadBuffer.push_front(padToBuffer);
+    if (pad != nullptr) {
+        auto& padFromBuffer =
+            mPadBuffer[std::min(mPadBuffer.size() - 1, (size_t)CVarGetInteger(CVAR_SIMULATED_INPUT_LAG, 0))];
+
+        pad->button |= padFromBuffer.button;
+
+        if (pad->stick_x == 0) {
+            pad->stick_x = padFromBuffer.stick_x;
+        }
+        if (pad->stick_y == 0) {
+            pad->stick_y = padFromBuffer.stick_y;
+        }
+
+        if (pad->right_stick_x == 0) {
+            pad->right_stick_x = padFromBuffer.right_stick_x;
+        }
+        if (pad->right_stick_y == 0) {
+            pad->right_stick_y = padFromBuffer.right_stick_y;
+        }
+
+        if (pad->gyro_x == 0) {
+            pad->gyro_x = padFromBuffer.gyro_x;
+        }
+        if (pad->gyro_y == 0) {
+            pad->gyro_y = padFromBuffer.gyro_y;
+        }
+    }
+
+    while (mPadBuffer.size() > 6) {
+        mPadBuffer.pop_back();
+    }
+}
+} // namespace LUS

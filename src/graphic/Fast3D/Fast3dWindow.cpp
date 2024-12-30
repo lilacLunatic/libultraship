@@ -82,6 +82,7 @@ void Fast3dWindow::Init() {
              height, posX, posY);
     mWindowManagerApi->set_fullscreen_changed_callback(OnFullscreenChanged);
     mWindowManagerApi->set_keyboard_callbacks(KeyDown, KeyUp, AllKeysUp);
+    mWindowManagerApi->set_mouse_callbacks(MouseButtonDown, MouseButtonUp);
 
     SetTextureFilter((FilteringMode)CVarGetInteger(CVAR_TEXTURE_FILTER, FILTER_THREE_POINT));
 }
@@ -134,6 +135,10 @@ void Fast3dWindow::SetTextureFilter(FilteringMode filteringMode) {
     gfx_get_current_rendering_api()->set_texture_filter(filteringMode);
 }
 
+void Fast3dWindow::EnableSRGBMode() {
+    gfx_get_current_rendering_api()->enable_srgb_mode();
+}
+
 void Fast3dWindow::SetRendererUCode(UcodeHandlers ucode) {
     gfx_set_target_ucode(ucode);
 }
@@ -179,6 +184,40 @@ int32_t Fast3dWindow::GetPosY() {
     int32_t posX, posY;
     mWindowManagerApi->get_dimensions(&width, &height, &posX, &posY);
     return posY;
+}
+
+void Fast3dWindow::SetMousePos(Ship::Coords pos) {
+    mWindowManagerApi->set_mouse_pos(pos.x, pos.y);
+}
+
+Ship::Coords Fast3dWindow::GetMousePos() {
+    int32_t x, y;
+    mWindowManagerApi->get_mouse_pos(&x, &y);
+    return { x, y };
+}
+
+Ship::Coords Fast3dWindow::GetMouseDelta() {
+    int32_t x, y;
+    mWindowManagerApi->get_mouse_delta(&x, &y);
+    return { x, y };
+}
+
+Ship::CoordsF Fast3dWindow::GetMouseWheel() {
+    float x, y;
+    mWindowManagerApi->get_mouse_wheel(&x, &y);
+    return { x, y };
+}
+
+bool Fast3dWindow::GetMouseState(Ship::MouseBtn btn) {
+    return mWindowManagerApi->get_mouse_state(static_cast<uint32_t>(btn));
+}
+
+void Fast3dWindow::SetMouseCapture(bool capture) {
+    mWindowManagerApi->set_mouse_capture(capture);
+}
+
+bool Fast3dWindow::IsMouseCaptured() {
+    return mWindowManagerApi->is_mouse_captured();
 }
 
 uint32_t Fast3dWindow::GetCurrentRefreshRate() {
@@ -237,6 +276,12 @@ bool Fast3dWindow::KeyUp(int32_t scancode) {
         Ship::Context::GetInstance()->GetWindow()->ToggleFullscreen();
     }
 
+    if (scancode ==
+        Ship::Context::GetInstance()->GetConfig()->GetInt("Shortcuts.MouseCapture", Ship::KbScancode::LUS_KB_F2)) {
+        bool captureState = Ship::Context::GetInstance()->GetWindow()->IsMouseCaptured();
+        Ship::Context::GetInstance()->GetWindow()->SetMouseCapture(!captureState);
+    }
+
     Ship::Context::GetInstance()->GetWindow()->SetLastScancode(-1);
     return Ship::Context::GetInstance()->GetControlDeck()->ProcessKeyboardEvent(
         Ship::KbEventType::LUS_KB_EVENT_KEY_UP, static_cast<Ship::KbScancode>(scancode));
@@ -250,9 +295,20 @@ bool Fast3dWindow::KeyDown(int32_t scancode) {
     return isProcessed;
 }
 
-void Fast3dWindow::AllKeysUp(void) {
+void Fast3dWindow::AllKeysUp() {
     Ship::Context::GetInstance()->GetControlDeck()->ProcessKeyboardEvent(Ship::KbEventType::LUS_KB_EVENT_ALL_KEYS_UP,
                                                                          Ship::KbScancode::LUS_KB_UNKNOWN);
+}
+
+bool Fast3dWindow::MouseButtonUp(int button) {
+    return Ship::Context::GetInstance()->GetControlDeck()->ProcessMouseEvent(false,
+                                                                             static_cast<Ship::MouseBtn>(button));
+}
+
+bool Fast3dWindow::MouseButtonDown(int button) {
+    bool isProcessed =
+        Ship::Context::GetInstance()->GetControlDeck()->ProcessMouseEvent(true, static_cast<Ship::MouseBtn>(button));
+    return isProcessed;
 }
 
 void Fast3dWindow::OnFullscreenChanged(bool isNowFullscreen) {
@@ -260,14 +316,10 @@ void Fast3dWindow::OnFullscreenChanged(bool isNowFullscreen) {
 
     if (isNowFullscreen) {
         auto menuBar = wnd->GetGui()->GetMenuBar();
-        wnd->SetCursorVisibility(menuBar && menuBar->IsVisible() || wnd->ShouldForceCursorVisibility() ||
-                                 CVarGetInteger("gWindows.Menu", 0));
+        wnd->SetMouseCapture(!(menuBar && menuBar->IsVisible() || wnd->ShouldForceCursorVisibility() ||
+                               CVarGetInteger("gWindows.Menu", 0)));
     } else {
-        wnd->SetCursorVisibility(true);
+        wnd->SetMouseCapture(false);
     }
-}
-
-void Fast3dWindow::MoveCursor(int32_t x, int32_t y){
-    mWindowManagerApi->move_cursor(x, y);
 }
 } // namespace Fast

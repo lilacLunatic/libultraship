@@ -363,9 +363,9 @@ void GfxDebuggerWindow::DrawDisasNode(const F3DGfx* cmd, std::vector<const F3DGf
                 break;
             }
 
-            case OTR_G_MTX_OTR2: {
+            case OTR_G_MTX_OTR_FILEPATH: {
                 const char* fileName = (char*)cmd->words.w1;
-                nodeWithText(cmd0, fmt::format("G_MTX_OTR2: {}", fileName));
+                nodeWithText(cmd0, fmt::format("G_MTX_OTR_FILEPATH: {}", fileName));
 
                 cmd++;
                 break;
@@ -512,6 +512,26 @@ void GfxDebuggerWindow::DrawDisasNode(const F3DGfx* cmd, std::vector<const F3DGf
                 break;
             }
 
+            case OTR_G_REGBLENDEDTEX: {
+                const char* timg = (const char*)cmd->words.w1;
+                cmd++;
+
+                uint8_t* mask = (uint8_t*)cmd->words.w0;
+                uint8_t* replacementTex = (uint8_t*)cmd->words.w1;
+
+                if (Ship::Context::GetInstance()->GetResourceManager()->OtrSignatureCheck(timg)) {
+                    timg += 7;
+                    nodeWithText(cmd0, fmt::format("G_REGBLENDEDTEX: src {}, mask {}, blended {}", timg, (void*)mask,
+                                                   (void*)replacementTex));
+                } else {
+                    nodeWithText(cmd0, fmt::format("G_REGBLENDEDTEX: src {}, mask {}, blended {}", (void*)timg,
+                                                   (void*)mask, (void*)replacementTex));
+                }
+
+                cmd++;
+                break;
+            }
+
             default: {
                 simpleNode(cmd, opcode);
                 cmd++;
@@ -521,26 +541,26 @@ void GfxDebuggerWindow::DrawDisasNode(const F3DGfx* cmd, std::vector<const F3DGf
     }
 }
 
-static const char* getTexType(LUS::TextureType type) {
+static const char* getTexType(Fast::TextureType type) {
     switch (type) {
 
-        case LUS::TextureType::RGBA32bpp:
+        case Fast::TextureType::RGBA32bpp:
             return "RGBA32";
-        case LUS::TextureType::RGBA16bpp:
+        case Fast::TextureType::RGBA16bpp:
             return "RGBA16";
-        case LUS::TextureType::Palette4bpp:
+        case Fast::TextureType::Palette4bpp:
             return "CI4";
-        case LUS::TextureType::Palette8bpp:
+        case Fast::TextureType::Palette8bpp:
             return "CI8";
-        case LUS::TextureType::Grayscale4bpp:
+        case Fast::TextureType::Grayscale4bpp:
             return "I4";
-        case LUS::TextureType::Grayscale8bpp:
+        case Fast::TextureType::Grayscale8bpp:
             return "I8";
-        case LUS::TextureType::GrayscaleAlpha4bpp:
+        case Fast::TextureType::GrayscaleAlpha4bpp:
             return "IA4";
-        case LUS::TextureType::GrayscaleAlpha8bpp:
+        case Fast::TextureType::GrayscaleAlpha8bpp:
             return "IA8";
-        case LUS::TextureType::GrayscaleAlpha16bpp:
+        case Fast::TextureType::GrayscaleAlpha16bpp:
             return "IA16";
         default:
             return "UNKNOWN";
